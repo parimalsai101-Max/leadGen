@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+/* ================================================================== *
+ *  LeadGen — crafted light theme
+ *  Warm paper canvas · near-black actions · one emerald accent.
+ * ================================================================== */
+
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* emerald = the single signature accent (growth / positive / active) */
+  --color-brand-50:  #ecfdf5;
+  --color-brand-100: #d1fae5;
+  --color-brand-200: #a7f3d0;
+  --color-brand-300: #6ee7b7;
+  --color-brand-400: #34d399;
+  --color-brand-500: #10b981;
+  --color-brand-600: #059669;
+  --color-brand-700: #047857;
+
+  --color-ink:    #1c1b19;  /* warm near-black */
+  --color-ink-2:  #57534e;  /* warm muted */
+  --color-canvas: #faf9f7;  /* warm paper */
+  --color-surface:#ffffff;
+  --color-line:   #eceae6;  /* warm hairline */
+}
+
+:root { color-scheme: light; }
+
+* { border-color: var(--color-line); }
+
+body {
+  background:
+    radial-gradient(900px 480px at 100% -8%, #f0fdf6 0%, transparent 60%),
+    radial-gradient(820px 420px at -8% -6%, #fdfcfa 0%, transparent 55%),
+    var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  min-height: 100vh;
+}
+
+h1, h2, h3 { letter-spacing: -0.02em; }
+
+@layer components {
+  .card {
+    @apply rounded-2xl border bg-white;
+    border-color: var(--color-line);
+    box-shadow: 0 1px 1px rgba(28,27,25,0.03), 0 10px 30px -18px rgba(28,27,25,0.18);
+  }
+  .card-hover { @apply transition duration-200; }
+  .card-hover:hover {
+    box-shadow: 0 1px 1px rgba(28,27,25,0.04), 0 18px 44px -20px rgba(5,150,105,0.22);
+    transform: translateY(-1px);
+  }
+
+  /* near-black primary — premium, not "bootstrap blue" */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-white transition active:scale-[.98] disabled:opacity-50 disabled:pointer-events-none;
+    background: var(--color-ink);
+    box-shadow: 0 1px 2px rgba(28,27,25,0.25), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+  .btn-primary:hover { background: #000; }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-medium text-stone-700 transition hover:bg-stone-50 active:scale-[.98] disabled:opacity-50;
+    border-color: var(--color-line);
+  }
+
+  .input {
+    @apply rounded-xl border bg-white px-3.5 py-2.5 text-sm text-stone-900 placeholder:text-stone-400 outline-none transition;
+    border-color: var(--color-line);
+  }
+  .input:focus { border-color: var(--color-brand-400); box-shadow: 0 0 0 4px var(--color-brand-100); }
+
+  .badge { @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium; }
+  .label { @apply text-[11px] font-semibold uppercase tracking-wider text-stone-400; }
+  .icon-btn { @apply inline-flex h-8 w-8 items-center justify-center rounded-lg text-stone-400 transition hover:bg-stone-100 hover:text-stone-700; }
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #ddd9d2; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: #cfcabf; background-clip: content-box; }
