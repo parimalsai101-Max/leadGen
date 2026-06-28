@@ -5,7 +5,10 @@ import fs from "node:fs";
 // Local SQLite store for the SEO lead-gen admin panel. File-based, zero-config.
 // Swap for Postgres (Neon) before serverless deploy.
 
-const DB_DIR = path.join(process.cwd(), "data");
+// Vercel serverless only allows writes under /tmp; local dev uses ./data.
+const DB_DIR = process.env.VERCEL
+  ? path.join("/tmp", "leadgen-data")
+  : path.join(process.cwd(), "data");
 const DB_PATH = path.join(DB_DIR, "leadgen.db");
 
 declare global {
