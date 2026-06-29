@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
-import { list, put } from "@vercel/blob";
+import { get, put } from "@vercel/blob";
 
 // Local SQLite for dev; on Vercel the DB file is synced to Blob so all serverless
 // instances share the same searches, runs, and leads.
@@ -87,15 +87,20 @@ function openDb(): Database.Database {
 async function loadFromBlob(): Promise<void> {
   if (!process.env.VERCEL) return;
   try {
-    const { blobs } = await list({ prefix: BLOB_PATHNAME });
-    const hit = blobs.find((b) => b.pathname === BLOB_PATHNAME);
-    if (!hit) return;
-    const res = await fetch(hit.url);
-    if (!res.ok) return;
+    const result = await get(BLOB_PATHNAME, { access: "private" });
+    if (!result || result.statusCode !== 200 || !result.stream) return;
+    const chunks: Uint8Array[] = [];
+    const reader = result.stream.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) chunks.push(value);
+    }
     fs.mkdirSync(DB_DIR, { recursive: true });
-    fs.writeFileSync(DB_PATH, Buffer.from(await res.arrayBuffer()));
+    fs.writeFileSync(DB_PATH, Buffer.concat(chunks));
   } catch (e) {
-    console.error("[db] blob load failed:", (e as Error).message);
+    const msg = (e as Error).message ?? "";
+    if (!/not found/i.test(msg)) console.error("[db] blob load failed:", msg);
   }
 }
 
