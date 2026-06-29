@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
-import { get, put } from "@vercel/blob";
+import { get, put, head } from "@vercel/blob";
 
 // Local SQLite for dev; on Vercel the DB file is synced to Blob so all serverless
 // instances share the same searches, runs, and leads.
@@ -13,12 +13,9 @@ const DB_DIR = process.env.VERCEL
 const DB_PATH = path.join(DB_DIR, "leadgen.db");
 
 function blobOpts() {
-  // On Vercel, prefer OIDC (auto-injected) + BLOB_STORE_ID; fall back to RW token locally.
-  if (process.env.VERCEL && process.env.BLOB_STORE_ID) {
-    return { access: "private" as const, storeId: process.env.BLOB_STORE_ID };
-  }
   return {
     access: "private" as const,
+    ...(process.env.BLOB_STORE_ID ? { storeId: process.env.BLOB_STORE_ID } : {}),
     ...(process.env.BLOB_READ_WRITE_TOKEN ? { token: process.env.BLOB_READ_WRITE_TOKEN } : {}),
   };
 }
@@ -103,17 +100,16 @@ function flushDb(db: Database.Database): void {
 async function loadFromBlob(): Promise<void> {
   if (!process.env.VERCEL) return;
   try {
-    const result = await get(BLOB_PATHNAME, blobOpts());
-    if (!result || result.statusCode !== 200 || !result.stream) return;
-    const chunks: Uint8Array[] = [];
-    const reader = result.stream.getReader();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) chunks.push(value);
+    const opts = blobOpts();
+    const meta = await head(BLOB_PATHNAME, opts);
+    const headers: Record<string, string> = {};
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      headers.authorization = `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}`;
     }
+    const res = await fetch(meta.downloadUrl, { headers });
+    if (!res.ok) return;
     fs.mkdirSync(DB_DIR, { recursive: true });
-    fs.writeFileSync(DB_PATH, Buffer.concat(chunks));
+    fs.writeFileSync(DB_PATH, Buffer.from(await res.arrayBuffer()));
   } catch (e) {
     const msg = (e as Error).message ?? "";
     if (!/not found/i.test(msg)) console.error("[db] blob load failed:", msg);
