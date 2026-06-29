@@ -1,8 +1,7 @@
 import type { Lead, SearchSpec } from "@/lib/types";
 import { runSearch } from "@/lib/pipeline";
-import { withDb, withDbRead } from "@/lib/db";
-import { saveRunResults } from "@/lib/repo";
-import type { Search } from "@/lib/repo";
+import { listActiveSearches, saveRunResults, listLeadDomains } from "@/lib/repo";
+import { withStore, nowUtc } from "@/lib/json-store";
 
 export interface RunSummary {
   runId: number;
@@ -11,38 +10,22 @@ export interface RunSummary {
   errors: { search: string; error: string }[];
 }
 
-function toSpecs(searches: Search[]): SearchSpec[] {
-  return searches.map((s) => ({
+export async function runDiscovery(opts: { specs?: SearchSpec[]; enrich?: boolean } = {}): Promise<RunSummary> {
+  const enrich = opts.enrich ?? true;
+  const specs: SearchSpec[] = opts.specs ?? (await listActiveSearches()).map((s) => ({
     niche: s.niche,
     location: s.location ?? undefined,
     limit: s.lim,
     channels: s.channels ?? undefined,
   }));
-}
 
-export async function runDiscovery(opts: { specs?: SearchSpec[]; enrich?: boolean } = {}): Promise<RunSummary> {
-  const enrich = opts.enrich ?? true;
-
-  const specs: SearchSpec[] = opts.specs ?? toSpecs(
-    (await withDbRead((db) =>
-      db.prepare("SELECT * FROM searches WHERE active = 1 ORDER BY created_at DESC").all() as {
-        niche: string; location: string | null; lim: number; channels: string | null;
-      }[],
-    )).map((s) => ({
-      ...s, id: 0, label: null, active: true, created_at: "",
-      channels: s.channels ? JSON.parse(s.channels) : null,
-    })),
-  );
-
-  const known = await withDbRead((db) => {
-    const rows = db.prepare("SELECT domain FROM leads").all() as { domain: string }[];
-    return new Set(rows.map((r) => r.domain));
-  });
-
-  const runId = await withDb((db) => {
-    const row = db.prepare("INSERT INTO runs (search_count, enrich) VALUES (?, ?) RETURNING id")
-      .get(specs.length, enrich ? 1 : 0) as { id: number };
-    return row.id;
+  const runId = await withStore((s) => {
+    const id = s.nextRunId++;
+    s.runs.unshift({
+      id, started_at: nowUtc(), finished_at: null, status: "running",
+      search_count: specs.length, lead_count: 0, enrich, error: null,
+    });
+    return id;
   });
 
   if (specs.length === 0) {
@@ -53,6 +36,7 @@ export async function runDiscovery(opts: { specs?: SearchSpec[]; enrich?: boolea
   try {
     const errors: { search: string; error: string }[] = [];
     const savedLeads: Lead[] = [];
+    const known = await listLeadDomains();
 
     for (const spec of specs) {
       const label = spec.location ? `${spec.niche} / ${spec.location}` : spec.niche;
