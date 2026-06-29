@@ -141,11 +141,11 @@ export async function withDb<T>(fn: (db: Database.Database) => T): Promise<T> {
   const db = process.env.VERCEL ? openDb() : global.__leadgenDb!;
   try {
     const result = fn(db);
-    if (process.env.VERCEL) flushDb(db);
     return result;
   } finally {
     if (process.env.VERCEL) {
-      closeDb();
+      flushDb(db);
+      db.close();
       await saveToBlob();
     }
   }
