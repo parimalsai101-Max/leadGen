@@ -10,6 +10,6 @@ export async function POST(req: Request) {
   if (!ids.length) {
     return NextResponse.json({ error: "ids must be a non-empty array of numbers" }, { status: 400 });
   }
-  const deleted = deleteLeads(ids);
+  const deleted = await deleteLeads(ids);
   return NextResponse.json({ ok: true, deleted });
 }

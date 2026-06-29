@@ -19,8 +19,8 @@ export async function PATCH(
   }
   if (body.notes !== undefined) patch.notes = body.notes;
 
-  updateLead(Number(id), patch);
-  return NextResponse.json({ lead: getLead(Number(id)) });
+  await updateLead(Number(id), patch);
+  return NextResponse.json({ lead: await getLead(Number(id)) });
 }
 
 export async function DELETE(
@@ -28,6 +28,6 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  deleteLead(Number(id));
+  await deleteLead(Number(id));
   return NextResponse.json({ ok: true });
 }

@@ -11,13 +11,17 @@ interface Run {
 
 export default function RunsPage() {
   const [runs, setRuns] = useState<Run[]>([]);
+  const [activeSearches, setActiveSearches] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
   async function load() {
     setLoading(true);
-    setRuns((await (await fetch("/api/runs")).json()).runs);
+    const [runsRes, searchesRes] = await Promise.all([fetch("/api/runs"), fetch("/api/searches")]);
+    setRuns((await runsRes.json()).runs);
+    const searches = (await searchesRes.json()).searches as { active: boolean }[];
+    setActiveSearches(searches.filter((s) => s.active).length);
     setLoading(false);
   }
   useEffect(() => { load(); }, []);
@@ -28,7 +32,11 @@ export default function RunsPage() {
     const data = await res.json();
     setRunning(false);
     if (!res.ok) { setMsg({ kind: "error", text: data.error }); load(); return; }
-    setMsg({ kind: "ok", text: `Run #${data.runId}: ${data.leadCount} leads from ${data.searchCount} search(es)${data.errors?.length ? ` · ${data.errors.length} error(s)` : ""}` });
+    if (data.searchCount === 0) {
+      setMsg({ kind: "error", text: "No active searches found. Add a niche + location on the Searches page first, then run again." });
+    } else {
+      setMsg({ kind: "ok", text: `Run #${data.runId}: ${data.leadCount} leads from ${data.searchCount} search(es)${data.errors?.length ? ` · ${data.errors.length} error(s)` : ""}` });
+    }
     load();
   }
 
@@ -48,6 +56,12 @@ export default function RunsPage() {
           </button>
         </div>
       </div>
+
+      {activeSearches === 0 && (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          ⚠ No active searches yet. Go to <a href="/searches" className="font-medium underline">Searches</a> and add at least one niche + city before running discovery.
+        </div>
+      )}
 
       {msg && (
         <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${msg.kind === "error" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>

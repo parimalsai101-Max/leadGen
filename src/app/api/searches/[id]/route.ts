@@ -9,12 +9,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (typeof body.active !== "boolean") {
     return NextResponse.json({ error: "active (boolean) required" }, { status: 400 });
   }
-  setSearchActive(Number(id), body.active);
+  await setSearchActive(Number(id), body.active);
   return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  deleteSearch(Number(id));
+  await deleteSearch(Number(id));
   return NextResponse.json({ ok: true });
 }

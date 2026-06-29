@@ -12,7 +12,7 @@ function parseChannels(raw: unknown): ChannelId[] | null {
 }
 
 export async function GET() {
-  return NextResponse.json({ searches: listSearches() });
+  return NextResponse.json({ searches: await listSearches() });
 }
 
 export async function POST(req: Request) {
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "niche is required (e.g. \"dentist\")" }, { status: 400 });
   }
   const lim = Number(body.lim);
-  const created = addSearch({
+  const created = await addSearch({
     niche: body.niche.trim(),
     location: body.location?.trim() || null,
     lim: Number.isFinite(lim) && lim > 0 ? Math.min(50, lim) : 10,

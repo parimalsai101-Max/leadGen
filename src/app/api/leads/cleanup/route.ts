@@ -5,6 +5,6 @@ export const runtime = "nodejs";
 
 // POST /api/leads/cleanup → remove fluff (booking microsites) + clean junky names.
 export async function POST() {
-  const result = cleanupLeads();
+  const result = await cleanupLeads();
   return NextResponse.json(result);
 }

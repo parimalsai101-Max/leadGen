@@ -1,4 +1,5 @@
-import { getDb } from "@/lib/db";
+import { withDb } from "@/lib/db";
+import type Database from "better-sqlite3";
 import type { Lead, Outreach, SeoAudit, ChannelId } from "@/lib/types";
 import { isMicrosite, looksLikeListicle, cleanNameFromDomain } from "@/lib/discovery/quality";
 
@@ -16,14 +17,15 @@ const toSearch = (r: SearchRow): Search => ({
   ...r, active: !!r.active, channels: r.channels ? JSON.parse(r.channels) : null,
 });
 
-export function listSearches(): Search[] {
-  return (getDb().prepare("SELECT * FROM searches ORDER BY created_at DESC").all() as SearchRow[]).map(toSearch);
+export async function listSearches(): Promise<Search[]> {
+  return withDb((db) => (db.prepare("SELECT * FROM searches ORDER BY created_at DESC").all() as SearchRow[]).map(toSearch));
 }
-export function listActiveSearches(): Search[] {
-  return (getDb().prepare("SELECT * FROM searches WHERE active = 1 ORDER BY created_at DESC").all() as SearchRow[]).map(toSearch);
+export async function listActiveSearches(): Promise<Search[]> {
+  return withDb((db) => (db.prepare("SELECT * FROM searches WHERE active = 1 ORDER BY created_at DESC").all() as SearchRow[]).map(toSearch));
 }
-export function addSearch(input: { niche: string; location?: string | null; lim?: number; channels?: ChannelId[] | null; label?: string | null }): Search {
-  const row = getDb().prepare(
+export async function addSearch(input: { niche: string; location?: string | null; lim?: number; channels?: ChannelId[] | null; label?: string | null }): Promise<Search> {
+  return withDb((db) => {
+  const row = db.prepare(
     `INSERT INTO searches (niche, location, lim, channels, label)
      VALUES (@niche, @location, @lim, @channels, @label)
      ON CONFLICT(niche, location) DO UPDATE SET
@@ -37,12 +39,13 @@ export function addSearch(input: { niche: string; location?: string | null; lim?
     label: input.label ?? null,
   }) as SearchRow;
   return toSearch(row);
+  });
 }
-export function setSearchActive(id: number, active: boolean): void {
-  getDb().prepare("UPDATE searches SET active = ? WHERE id = ?").run(active ? 1 : 0, id);
+export async function setSearchActive(id: number, active: boolean): Promise<void> {
+  return withDb((db) => { db.prepare("UPDATE searches SET active = ? WHERE id = ?").run(active ? 1 : 0, id); });
 }
-export function deleteSearch(id: number): void {
-  getDb().prepare("DELETE FROM searches WHERE id = ?").run(id);
+export async function deleteSearch(id: number): Promise<void> {
+  return withDb((db) => { db.prepare("DELETE FROM searches WHERE id = ?").run(id); });
 }
 
 // ---- Runs -------------------------------------------------------------------
@@ -54,19 +57,23 @@ export interface Run {
 }
 interface RunRow extends Omit<Run, "enrich"> { enrich: number }
 
-export function createRun(searchCount: number, enrich: boolean): number {
-  const r = getDb().prepare("INSERT INTO runs (search_count, enrich) VALUES (?, ?) RETURNING id")
-    .get(searchCount, enrich ? 1 : 0) as { id: number };
-  return r.id;
+export async function createRun(searchCount: number, enrich: boolean): Promise<number> {
+  return withDb((db) => {
+    const r = db.prepare("INSERT INTO runs (search_count, enrich) VALUES (?, ?) RETURNING id")
+      .get(searchCount, enrich ? 1 : 0) as { id: number };
+    return r.id;
+  });
 }
-export function finishRun(id: number, leadCount: number, error?: string): void {
-  getDb().prepare(
-    `UPDATE runs SET finished_at = datetime('now'), status = ?, lead_count = ?, error = ? WHERE id = ?`,
-  ).run(error ? "error" : "done", leadCount, error ?? null, id);
+export async function finishRun(id: number, leadCount: number, error?: string): Promise<void> {
+  return withDb((db) => {
+    db.prepare(
+      `UPDATE runs SET finished_at = datetime('now'), status = ?, lead_count = ?, error = ? WHERE id = ?`,
+    ).run(error ? "error" : "done", leadCount, error ?? null, id);
+  });
 }
-export function listRuns(limit = 50): Run[] {
-  return (getDb().prepare("SELECT * FROM runs ORDER BY started_at DESC LIMIT ?").all(limit) as RunRow[])
-    .map((r) => ({ ...r, enrich: !!r.enrich }));
+export async function listRuns(limit = 50): Promise<Run[]> {
+  return withDb((db) => (db.prepare("SELECT * FROM runs ORDER BY started_at DESC LIMIT ?").all(limit) as RunRow[])
+    .map((r) => ({ ...r, enrich: !!r.enrich })));
 }
 
 // ---- Leads ------------------------------------------------------------------
@@ -124,8 +131,7 @@ function mergeOutreach(prev: Outreach | null, next: Outreach | null): Outreach |
  * contacts) and keeps the higher score so re-runs only ever improve a lead,
  * never downgrade it when a re-scrape happens to find less.
  */
-export function upsertLead(lead: Lead, runId: number): void {
-  const db = getDb();
+function upsertLeadDb(db: Database.Database, lead: Lead, runId: number): void {
   const existingRow = db.prepare("SELECT * FROM leads WHERE domain = ?").get(lead.domain) as LeadRow | undefined;
   const existing = existingRow ? toLead(existingRow) : null;
 
@@ -172,6 +178,20 @@ export function upsertLead(lead: Lead, runId: number): void {
   });
 }
 
+export async function upsertLead(lead: Lead, runId: number): Promise<void> {
+  return withDb((db) => upsertLeadDb(db, lead, runId));
+}
+
+/** Batch-save leads and finish a run in one blob sync. */
+export async function saveRunResults(runId: number, leads: Lead[], leadCount: number, error?: string): Promise<void> {
+  return withDb((db) => {
+    for (const lead of leads) upsertLeadDb(db, lead, runId);
+    db.prepare(
+      `UPDATE runs SET finished_at = datetime('now'), status = ?, lead_count = ?, error = ? WHERE id = ?`,
+    ).run(error ? "error" : "done", leadCount, error ?? null, runId);
+  });
+}
+
 export type DatePeriod = "today" | "yesterday" | "week" | "month" | "year";
 export const DATE_PERIODS: DatePeriod[] = ["today", "yesterday", "week", "month", "year"];
 
@@ -192,7 +212,8 @@ const PERIOD_SQL: Record<DatePeriod, string> = {
   year:      "strftime('%Y', created_at) = strftime('%Y','now')",
 };
 
-export function listLeads(filter: LeadFilter = {}): StoredLead[] {
+export async function listLeads(filter: LeadFilter = {}): Promise<StoredLead[]> {
+  return withDb((db) => {
   const where: string[] = [];
   const params: Record<string, unknown> = {};
   if (filter.status) { where.push("status = @status"); params.status = filter.status; }
@@ -211,40 +232,49 @@ export function listLeads(filter: LeadFilter = {}): StoredLead[] {
     : "score DESC";
 
   const sql = `SELECT * FROM leads ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY ${order}`;
-  return (getDb().prepare(sql).all(params) as LeadRow[]).map(toLead);
+  return (db.prepare(sql).all(params) as LeadRow[]).map(toLead);
+  });
 }
 /** All lead domains currently stored — used to dedupe new discovery runs. */
-export function listLeadDomains(): Set<string> {
-  const rows = getDb().prepare("SELECT domain FROM leads").all() as { domain: string }[];
-  return new Set(rows.map((r) => r.domain));
+export async function listLeadDomains(): Promise<Set<string>> {
+  return withDb((db) => {
+    const rows = db.prepare("SELECT domain FROM leads").all() as { domain: string }[];
+    return new Set(rows.map((r) => r.domain));
+  });
 }
-export function getLead(id: number): StoredLead | null {
-  const r = getDb().prepare("SELECT * FROM leads WHERE id = ?").get(id) as LeadRow | undefined;
-  return r ? toLead(r) : null;
+export async function getLead(id: number): Promise<StoredLead | null> {
+  return withDb((db) => {
+    const r = db.prepare("SELECT * FROM leads WHERE id = ?").get(id) as LeadRow | undefined;
+    return r ? toLead(r) : null;
+  });
 }
-export function updateLead(id: number, patch: { status?: LeadStatus; notes?: string }): void {
+export async function updateLead(id: number, patch: { status?: LeadStatus; notes?: string }): Promise<void> {
+  return withDb((db) => {
   const sets: string[] = [];
   const params: Record<string, unknown> = { id };
   if (patch.status) { sets.push("status = @status"); params.status = patch.status; }
   if (patch.notes !== undefined) { sets.push("notes = @notes"); params.notes = patch.notes; }
   if (!sets.length) return;
   sets.push("updated_at = datetime('now')");
-  getDb().prepare(`UPDATE leads SET ${sets.join(", ")} WHERE id = @id`).run(params);
+  db.prepare(`UPDATE leads SET ${sets.join(", ")} WHERE id = @id`).run(params);
+  });
 }
-export function deleteLead(id: number): void {
-  getDb().prepare("DELETE FROM leads WHERE id = ?").run(id);
+export async function deleteLead(id: number): Promise<void> {
+  return withDb((db) => { db.prepare("DELETE FROM leads WHERE id = ?").run(id); });
 }
 /** Bulk-delete leads by id. Returns the number actually removed. */
-export function deleteLeads(ids: number[]): number {
-  const clean = ids.map(Number).filter((n) => Number.isInteger(n));
-  if (!clean.length) return 0;
-  const placeholders = clean.map(() => "?").join(",");
-  return getDb().prepare(`DELETE FROM leads WHERE id IN (${placeholders})`).run(...clean).changes;
+export async function deleteLeads(ids: number[]): Promise<number> {
+  return withDb((db) => {
+    const clean = ids.map(Number).filter((n) => Number.isInteger(n));
+    if (!clean.length) return 0;
+    const placeholders = clean.map(() => "?").join(",");
+    return db.prepare(`DELETE FROM leads WHERE id IN (${placeholders})`).run(...clean).changes;
+  });
 }
 
 /** One-time hygiene pass over stored leads: remove fluff, clean junky names. */
-export function cleanupLeads(): { deleted: { name: string; domain: string }[]; renamed: { from: string; to: string }[] } {
-  const db = getDb();
+export async function cleanupLeads(): Promise<{ deleted: { name: string; domain: string }[]; renamed: { from: string; to: string }[] }> {
+  return withDb((db) => {
   const rows = db.prepare("SELECT id, name, domain FROM leads").all() as { id: number; name: string; domain: string }[];
   const deleted: { name: string; domain: string }[] = [];
   const renamed: { from: string; to: string }[] = [];
@@ -263,6 +293,7 @@ export function cleanupLeads(): { deleted: { name: string; domain: string }[]; r
     }
   }
   return { deleted, renamed };
+  });
 }
 
 // ---- Stats ------------------------------------------------------------------
@@ -271,8 +302,8 @@ export interface Stats {
   totalLeads: number; byStatus: Record<string, number>; avgScore: number;
   hotLeads: number; withEmail: number; activeSearches: number; totalRuns: number; lastRunAt: string | null;
 }
-export function getStats(): Stats {
-  const db = getDb();
+export async function getStats(): Promise<Stats> {
+  return withDb((db) => {
   const totalLeads = (db.prepare("SELECT COUNT(*) c FROM leads").get() as { c: number }).c;
   const statusRows = db.prepare("SELECT status, COUNT(*) c FROM leads GROUP BY status").all() as { status: string; c: number }[];
   const byStatus: Record<string, number> = {};
@@ -284,4 +315,5 @@ export function getStats(): Stats {
   const totalRuns = (db.prepare("SELECT COUNT(*) c FROM runs").get() as { c: number }).c;
   const lastRunAt = (db.prepare("SELECT MAX(started_at) m FROM runs").get() as { m: string | null }).m;
   return { totalLeads, byStatus, avgScore, hotLeads, withEmail, activeSearches, totalRuns, lastRunAt };
+  });
 }

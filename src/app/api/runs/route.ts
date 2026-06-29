@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 export async function GET() {
-  return NextResponse.json({ runs: listRuns() });
+  return NextResponse.json({ runs: await listRuns() });
 }
 
 export async function POST(req: Request) {

@@ -10,9 +10,9 @@ const STATUS_BAR: Record<string, string> = {
   won: "bg-brand-500", lost: "bg-rose-500", archived: "bg-stone-300",
 };
 
-export default function Dashboard() {
-  const stats = getStats();
-  const topLeads = listLeads({ sort: "score" }).slice(0, 6);
+export default async function Dashboard() {
+  const stats = await getStats();
+  const topLeads = (await listLeads({ sort: "score" })).slice(0, 6);
   const hasData = stats.totalLeads > 0;
 
   return (

@@ -26,5 +26,5 @@ export async function GET(req: Request) {
   const sort = sp.get("sort");
   if (sort === "score" || sort === "opportunity" || sort === "recent" || sort === "name") filter.sort = sort;
 
-  return NextResponse.json({ leads: listLeads(filter) });
+  return NextResponse.json({ leads: await listLeads(filter) });
 }

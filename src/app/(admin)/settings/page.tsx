@@ -3,8 +3,8 @@ import { PageHeader } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
-export default function SettingsPage() {
-  const stats = getStats();
+export default async function SettingsPage() {
+  const stats = await getStats();
 
   return (
     <main>

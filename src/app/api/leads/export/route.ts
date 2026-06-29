@@ -29,7 +29,7 @@ export async function GET(req: Request) {
   const to = sp.get("to");
   if (to) filter.to = to;
 
-  const leads = listLeads(filter);
+  const leads = await listLeads(filter);
   const headers = [
     "business", "website", "score", "seo_opportunity", "status", "channels",
     "emails", "phones", "socials", "contact_page", "people",
