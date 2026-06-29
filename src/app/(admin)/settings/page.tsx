@@ -11,20 +11,14 @@ export default async function SettingsPage() {
       <PageHeader title="Settings" subtitle="Configuration & system status." />
 
       <div className="space-y-5">
-        <Card title="Crawl4AI">
-          <div className="flex items-center gap-2.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-            <span className="text-sm text-stone-700">
-              Local scraping active — discovery, SEO audits, and contact enrichment run fully free with no API key.
-            </span>
-          </div>
+        <Card title="Search & enrichment">
+          <ul className="space-y-2 text-sm text-stone-600">
+            <EnvRow set={!!process.env.SERPER_API_KEY} name="SERPER_API_KEY" note="Web, LinkedIn, YP, Quora, Clutch, G2, Crunchbase (required on Vercel)" />
+            <EnvRow set={!!process.env.GOOGLE_PLACES_API_KEY} name="GOOGLE_PLACES_API_KEY" note="Google Maps channel" />
+          </ul>
           <p className="mt-3 text-sm text-stone-500">
-            Business discovery uses DuckDuckGo search. Enrichment uses crawl4ai (headless Chromium).
-            Requires Python 3 with <code className="rounded bg-stone-100 px-1.5 py-0.5 text-xs">crawl4ai</code> and{" "}
-            <code className="rounded bg-stone-100 px-1.5 py-0.5 text-xs">ddgs</code> installed.
-          </p>
-          <p className="mt-2 text-sm text-stone-500">
-            To install: <code className="rounded bg-stone-100 px-1.5 py-0.5 text-xs">pip3 install crawl4ai ddgs && crawl4ai-setup</code>
+            On Vercel, DuckDuckGo blocks datacenter IPs — without <code className="rounded bg-stone-100 px-1 py-0.5">SERPER_API_KEY</code> only Google Maps returns leads.
+            Site enrichment uses direct HTTP fetch (no API key).
           </p>
         </Card>
 
@@ -64,5 +58,19 @@ function Mini({ label, value }: { label: string; value: number }) {
       <div className="text-2xl font-semibold tabular-nums text-stone-900">{value}</div>
       <div className="text-xs text-stone-400">{label}</div>
     </div>
+  );
+}
+
+function EnvRow({ set, name, note }: { set: boolean; name: string; note: string }) {
+  return (
+    <li className="flex items-start gap-2.5">
+      <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${set ? "bg-emerald-500" : "bg-rose-400"}`} />
+      <span>
+        <code className="rounded bg-stone-100 px-1 py-0.5 text-xs">{name}</code>
+        {" — "}
+        {set ? "configured" : "missing"}
+        <span className="text-stone-400"> · {note}</span>
+      </span>
+    </li>
   );
 }

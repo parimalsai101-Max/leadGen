@@ -1,6 +1,8 @@
 import { search, SafeSearchType } from "duck-duck-scrape";
 
 // Web search + page fetch for Vercel/serverless (no Python subprocess).
+// DuckDuckGo scrape is blocked from datacenter IPs (Vercel) — set SERPER_API_KEY
+// so all non-Maps channels use Serper (Google results) in production.
 
 export interface CrawlResult {
   success: boolean;
@@ -92,17 +94,61 @@ export async function crawlUrl(url: string): Promise<CrawlResult> {
   }
 }
 
+async function searchWithSerper(query: string, limit: number): Promise<SearchResult[]> {
+  const key = process.env.SERPER_API_KEY;
+  if (!key) return [];
+
+  const res = await fetch("https://google.serper.dev/search", {
+    method: "POST",
+    headers: { "X-API-KEY": key, "Content-Type": "application/json" },
+    body: JSON.stringify({ q: query, num: Math.min(limit, 100) }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Serper ${res.status}: ${detail.slice(0, 200)}`);
+  }
+
+  const data = (await res.json()) as { organic?: { link: string; title: string; snippet?: string }[] };
+  return (data.organic ?? []).slice(0, limit).map((r) => ({
+    url: r.link,
+    title: r.title,
+    description: r.snippet ?? "",
+  }));
+}
+
+async function searchWithDdg(query: string, limit: number): Promise<SearchResult[]> {
+  const { results, noResults } = await search(query, { safeSearch: SafeSearchType.OFF });
+  if (noResults || !results?.length) return [];
+  return results.slice(0, limit).map((r) => ({
+    url: r.url,
+    title: r.title,
+    description: r.description ?? r.rawDescription ?? "",
+  }));
+}
+
+let warnedMissingSerper = false;
+
 export async function searchWeb(query: string, limit = 20): Promise<SearchResult[]> {
+  if (process.env.SERPER_API_KEY) {
+    try {
+      const results = await searchWithSerper(query, limit);
+      if (results.length) return results;
+      console.warn("[searchWeb] Serper returned no results:", query);
+    } catch (e) {
+      console.error("[searchWeb] Serper failed:", query, (e as Error).message);
+    }
+  } else if (process.env.VERCEL && !warnedMissingSerper) {
+    warnedMissingSerper = true;
+    console.warn(
+      "[searchWeb] SERPER_API_KEY not set on Vercel — DuckDuckGo is usually blocked from datacenter IPs; only Google Maps will return leads.",
+    );
+  }
+
   try {
-    const { results, noResults } = await search(query, { safeSearch: SafeSearchType.OFF });
-    if (noResults || !results?.length) return [];
-    return results.slice(0, limit).map((r) => ({
-      url: r.url,
-      title: r.title,
-      description: r.description ?? r.rawDescription ?? "",
-    }));
+    return await searchWithDdg(query, limit);
   } catch (e) {
-    console.error("[searchWeb]", query, (e as Error).message);
+    console.error("[searchWeb] DDG failed:", query, (e as Error).message);
     return [];
   }
 }
