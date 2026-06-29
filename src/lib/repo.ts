@@ -1,4 +1,4 @@
-import { withDb } from "@/lib/db";
+import { withDb, withDbRead } from "@/lib/db";
 import type Database from "better-sqlite3";
 import type { Lead, Outreach, SeoAudit, ChannelId } from "@/lib/types";
 import { isMicrosite, looksLikeListicle, cleanNameFromDomain } from "@/lib/discovery/quality";
@@ -18,10 +18,10 @@ const toSearch = (r: SearchRow): Search => ({
 });
 
 export async function listSearches(): Promise<Search[]> {
-  return withDb((db) => (db.prepare("SELECT * FROM searches ORDER BY created_at DESC").all() as SearchRow[]).map(toSearch));
+  return withDbRead((db) => (db.prepare("SELECT * FROM searches ORDER BY created_at DESC").all() as SearchRow[]).map(toSearch));
 }
 export async function listActiveSearches(): Promise<Search[]> {
-  return withDb((db) => (db.prepare("SELECT * FROM searches WHERE active = 1 ORDER BY created_at DESC").all() as SearchRow[]).map(toSearch));
+  return withDbRead((db) => (db.prepare("SELECT * FROM searches WHERE active = 1 ORDER BY created_at DESC").all() as SearchRow[]).map(toSearch));
 }
 export async function addSearch(input: { niche: string; location?: string | null; lim?: number; channels?: ChannelId[] | null; label?: string | null }): Promise<Search> {
   return withDb((db) => {
@@ -72,7 +72,7 @@ export async function finishRun(id: number, leadCount: number, error?: string): 
   });
 }
 export async function listRuns(limit = 50): Promise<Run[]> {
-  return withDb((db) => (db.prepare("SELECT * FROM runs ORDER BY started_at DESC LIMIT ?").all(limit) as RunRow[])
+  return withDbRead((db) => (db.prepare("SELECT * FROM runs ORDER BY started_at DESC LIMIT ?").all(limit) as RunRow[])
     .map((r) => ({ ...r, enrich: !!r.enrich })));
 }
 
@@ -213,7 +213,7 @@ const PERIOD_SQL: Record<DatePeriod, string> = {
 };
 
 export async function listLeads(filter: LeadFilter = {}): Promise<StoredLead[]> {
-  return withDb((db) => {
+  return withDbRead((db) => {
   const where: string[] = [];
   const params: Record<string, unknown> = {};
   if (filter.status) { where.push("status = @status"); params.status = filter.status; }
@@ -237,13 +237,13 @@ export async function listLeads(filter: LeadFilter = {}): Promise<StoredLead[]> 
 }
 /** All lead domains currently stored — used to dedupe new discovery runs. */
 export async function listLeadDomains(): Promise<Set<string>> {
-  return withDb((db) => {
+  return withDbRead((db) => {
     const rows = db.prepare("SELECT domain FROM leads").all() as { domain: string }[];
     return new Set(rows.map((r) => r.domain));
   });
 }
 export async function getLead(id: number): Promise<StoredLead | null> {
-  return withDb((db) => {
+  return withDbRead((db) => {
     const r = db.prepare("SELECT * FROM leads WHERE id = ?").get(id) as LeadRow | undefined;
     return r ? toLead(r) : null;
   });
@@ -303,7 +303,7 @@ export interface Stats {
   hotLeads: number; withEmail: number; activeSearches: number; totalRuns: number; lastRunAt: string | null;
 }
 export async function getStats(): Promise<Stats> {
-  return withDb((db) => {
+  return withDbRead((db) => {
   const totalLeads = (db.prepare("SELECT COUNT(*) c FROM leads").get() as { c: number }).c;
   const statusRows = db.prepare("SELECT status, COUNT(*) c FROM leads GROUP BY status").all() as { status: string; c: number }[];
   const byStatus: Record<string, number> = {};

@@ -129,7 +129,24 @@ async function saveToBlob(): Promise<void> {
   }
 }
 
-/** Run a DB operation; on Vercel, syncs from/to Blob so data persists across instances. */
+/** Run a read-only DB operation (never overwrites the blob). */
+export async function withDbRead<T>(fn: (db: Database.Database) => T): Promise<T> {
+  if (process.env.VERCEL) {
+    closeDb();
+    await loadFromBlob();
+  } else if (!global.__leadgenDb) {
+    global.__leadgenDb = openDb();
+  }
+
+  const db = process.env.VERCEL ? openDb() : global.__leadgenDb!;
+  try {
+    return fn(db);
+  } finally {
+    if (process.env.VERCEL) db.close();
+  }
+}
+
+/** Run a mutating DB operation; on Vercel, syncs from/to Blob. */
 export async function withDb<T>(fn: (db: Database.Database) => T): Promise<T> {
   if (process.env.VERCEL) {
     closeDb();
@@ -140,8 +157,7 @@ export async function withDb<T>(fn: (db: Database.Database) => T): Promise<T> {
 
   const db = process.env.VERCEL ? openDb() : global.__leadgenDb!;
   try {
-    const result = fn(db);
-    return result;
+    return fn(db);
   } finally {
     if (process.env.VERCEL) {
       flushDb(db);
