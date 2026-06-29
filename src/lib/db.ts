@@ -13,6 +13,10 @@ const DB_DIR = process.env.VERCEL
 const DB_PATH = path.join(DB_DIR, "leadgen.db");
 
 function blobOpts() {
+  // On Vercel, prefer OIDC (auto-injected) + BLOB_STORE_ID; fall back to RW token locally.
+  if (process.env.VERCEL && process.env.BLOB_STORE_ID) {
+    return { access: "private" as const, storeId: process.env.BLOB_STORE_ID };
+  }
   return {
     access: "private" as const,
     ...(process.env.BLOB_READ_WRITE_TOKEN ? { token: process.env.BLOB_READ_WRITE_TOKEN } : {}),
