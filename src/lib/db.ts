@@ -85,9 +85,9 @@ function openDb(): Database.Database {
 }
 
 async function loadFromBlob(): Promise<void> {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) return;
+  if (!process.env.VERCEL) return;
   try {
-    const { blobs } = await list({ prefix: BLOB_PATHNAME, token: process.env.BLOB_READ_WRITE_TOKEN });
+    const { blobs } = await list({ prefix: BLOB_PATHNAME });
     const hit = blobs.find((b) => b.pathname === BLOB_PATHNAME);
     if (!hit) return;
     const res = await fetch(hit.url);
@@ -100,12 +100,11 @@ async function loadFromBlob(): Promise<void> {
 }
 
 async function saveToBlob(): Promise<void> {
-  if (!process.env.BLOB_READ_WRITE_TOKEN || !fs.existsSync(DB_PATH)) return;
+  if (!process.env.VERCEL || !fs.existsSync(DB_PATH)) return;
   try {
     await put(BLOB_PATHNAME, fs.readFileSync(DB_PATH), {
       access: "private",
       addRandomSuffix: false,
-      token: process.env.BLOB_READ_WRITE_TOKEN,
       allowOverwrite: true,
     });
   } catch (e) {
