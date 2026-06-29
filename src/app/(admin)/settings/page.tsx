@@ -13,11 +13,13 @@ export default async function SettingsPage() {
       <div className="space-y-5">
         <Card title="Search & enrichment">
           <ul className="space-y-2 text-sm text-stone-600">
-            <EnvRow set={!!process.env.SERPER_API_KEY} name="SERPER_API_KEY" note="Web, LinkedIn, YP, Quora, Clutch, G2, Crunchbase (required on Vercel)" />
+            <EnvRow set={!!process.env.FIRECRAWL_API_KEY} name="FIRECRAWL_API_KEY" note="Web search on Vercel (already configured)" />
+            <EnvRow set={!!process.env.SERPER_API_KEY} name="SERPER_API_KEY" note="Alternative web search (cheaper per query)" />
             <EnvRow set={!!process.env.GOOGLE_PLACES_API_KEY} name="GOOGLE_PLACES_API_KEY" note="Google Maps channel" />
           </ul>
           <p className="mt-3 text-sm text-stone-500">
-            On Vercel, DuckDuckGo blocks datacenter IPs — without <code className="rounded bg-stone-100 px-1 py-0.5">SERPER_API_KEY</code> only Google Maps returns leads.
+            On Vercel, DuckDuckGo blocks datacenter IPs — set <code className="rounded bg-stone-100 px-1 py-0.5">FIRECRAWL_API_KEY</code> or{" "}
+            <code className="rounded bg-stone-100 px-1 py-0.5">SERPER_API_KEY</code> so all channels return leads (not just Google Maps).
             Site enrichment uses direct HTTP fetch (no API key).
           </p>
         </Card>

@@ -1,8 +1,8 @@
 import { search, SafeSearchType } from "duck-duck-scrape";
 
 // Web search + page fetch for Vercel/serverless (no Python subprocess).
-// DuckDuckGo scrape is blocked from datacenter IPs (Vercel) — set SERPER_API_KEY
-// so all non-Maps channels use Serper (Google results) in production.
+// DuckDuckGo scrape is blocked from datacenter IPs (Vercel) — set SERPER_API_KEY or
+// FIRECRAWL_API_KEY so all non-Maps channels work in production.
 
 export interface CrawlResult {
   success: boolean;
@@ -94,6 +94,32 @@ export async function crawlUrl(url: string): Promise<CrawlResult> {
   }
 }
 
+async function searchWithFirecrawl(query: string, limit: number): Promise<SearchResult[]> {
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key) return [];
+
+  const res = await fetch("https://api.firecrawl.dev/v2/search", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query, limit: Math.min(limit, 100) }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Firecrawl ${res.status}: ${detail.slice(0, 200)}`);
+  }
+
+  const payload = (await res.json()) as {
+    success?: boolean;
+    data?: { web?: { url: string; title?: string; description?: string }[] };
+  };
+  return (payload.data?.web ?? []).slice(0, limit).map((r) => ({
+    url: r.url,
+    title: r.title ?? "",
+    description: r.description ?? "",
+  }));
+}
+
 async function searchWithSerper(query: string, limit: number): Promise<SearchResult[]> {
   const key = process.env.SERPER_API_KEY;
   if (!key) return [];
@@ -127,7 +153,7 @@ async function searchWithDdg(query: string, limit: number): Promise<SearchResult
   }));
 }
 
-let warnedMissingSerper = false;
+let warnedMissingSearchApi = false;
 
 export async function searchWeb(query: string, limit = 20): Promise<SearchResult[]> {
   if (process.env.SERPER_API_KEY) {
@@ -138,10 +164,20 @@ export async function searchWeb(query: string, limit = 20): Promise<SearchResult
     } catch (e) {
       console.error("[searchWeb] Serper failed:", query, (e as Error).message);
     }
-  } else if (process.env.VERCEL && !warnedMissingSerper) {
-    warnedMissingSerper = true;
+  }
+
+  if (process.env.FIRECRAWL_API_KEY) {
+    try {
+      const results = await searchWithFirecrawl(query, limit);
+      if (results.length) return results;
+      console.warn("[searchWeb] Firecrawl returned no results:", query);
+    } catch (e) {
+      console.error("[searchWeb] Firecrawl failed:", query, (e as Error).message);
+    }
+  } else if (process.env.VERCEL && !warnedMissingSearchApi) {
+    warnedMissingSearchApi = true;
     console.warn(
-      "[searchWeb] SERPER_API_KEY not set on Vercel — DuckDuckGo is usually blocked from datacenter IPs; only Google Maps will return leads.",
+      "[searchWeb] No SERPER_API_KEY or FIRECRAWL_API_KEY on Vercel — DuckDuckGo is usually blocked; only Google Maps will return leads.",
     );
   }
 
