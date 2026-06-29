@@ -12,6 +12,13 @@ const DB_DIR = process.env.VERCEL
   : path.join(process.cwd(), "data");
 const DB_PATH = path.join(DB_DIR, "leadgen.db");
 
+function blobOpts() {
+  return {
+    access: "private" as const,
+    ...(process.env.BLOB_READ_WRITE_TOKEN ? { token: process.env.BLOB_READ_WRITE_TOKEN } : {}),
+  };
+}
+
 declare global {
   var __leadgenDb: Database.Database | undefined;
 }
@@ -78,16 +85,21 @@ function closeDb(): void {
 function openDb(): Database.Database {
   fs.mkdirSync(DB_DIR, { recursive: true });
   const db = new Database(DB_PATH);
-  db.pragma("journal_mode = WAL");
+  // WAL keeps changes in a sidecar file; use DELETE on Vercel so blob upload is complete.
+  db.pragma(process.env.VERCEL ? "journal_mode = DELETE" : "journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
   return db;
 }
 
+function flushDb(db: Database.Database): void {
+  if (process.env.VERCEL) db.pragma("wal_checkpoint(TRUNCATE)");
+}
+
 async function loadFromBlob(): Promise<void> {
   if (!process.env.VERCEL) return;
   try {
-    const result = await get(BLOB_PATHNAME, { access: "private" });
+    const result = await get(BLOB_PATHNAME, blobOpts());
     if (!result || result.statusCode !== 200 || !result.stream) return;
     const chunks: Uint8Array[] = [];
     const reader = result.stream.getReader();
@@ -108,7 +120,7 @@ async function saveToBlob(): Promise<void> {
   if (!process.env.VERCEL || !fs.existsSync(DB_PATH)) return;
   try {
     await put(BLOB_PATHNAME, fs.readFileSync(DB_PATH), {
-      access: "private",
+      ...blobOpts(),
       addRandomSuffix: false,
       allowOverwrite: true,
     });
@@ -128,7 +140,9 @@ export async function withDb<T>(fn: (db: Database.Database) => T): Promise<T> {
 
   const db = process.env.VERCEL ? openDb() : global.__leadgenDb!;
   try {
-    return fn(db);
+    const result = fn(db);
+    if (process.env.VERCEL) flushDb(db);
+    return result;
   } finally {
     if (process.env.VERCEL) {
       closeDb();
